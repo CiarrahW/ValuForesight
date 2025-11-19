@@ -1,153 +1,166 @@
-// lib/dcf.ts
 import type { CompanyFinancials } from "@/data/faang";
 
-export interface DcfAssumptions {
-  revenueGrowthPct: number;      // %
-  ebitMarginPct: number;         // %
-  taxRatePct: number;            // %
-  daPct: number;                 // % of revenue
-  capexPct: number;              // % of revenue
-  changeNwcPct: number;          // % of revenue
-  waccPct: number;               // %
-  terminalGrowthPct: number;     // %
-  forecastYears: number;         // default 5
-}
+export type DcfInputs = {
+  revenueGrowth: number;      // e.g. 0.08 for 8%
+  ebitMargin: number;         // EBIT / Revenue
+  taxRate: number;
+  daPct: number;              // D&A as % of revenue
+  capexPct: number;           // CapEx as % of revenue
+  changeNwcPct: number;       // ΔNWC as % of revenue
+  wacc: number;               // discount rate
+  terminalGrowth: number;     // long-term g
+};
 
-export interface YearProjection {
-  yearIndex: number;        // 1..N
+export type DcfYearResult = {
+  year: number;       // 1..5
   revenue: number;
   ebit: number;
-  ebiat: number;
+  tax: number;
+  nopat: number;
   da: number;
   capex: number;
   changeNwc: number;
   fcf: number;
-  discountFactor: number;
   discountedFcf: number;
-}
+};
 
-export interface DcfResult {
-  projections: YearProjection[];
-  terminalValue: number;
-  discountedTerminalValue: number;
+export type DcfResult = {
+  years: DcfYearResult[];
+  presentValueOfForecastFcfs: number;
+  presentValueOfTerminalValue: number;
   enterpriseValue: number;
   netDebt: number;
   equityValue: number;
-  impliedSharePrice: number;
+  sharePrice: number;
+};
+
+export type WaccTerminalSensitivityResult = {
+  waccRates: number[];           // e.g. [7.5, 8.5, 9.5]
+  terminalGrowthRates: number[]; // e.g. [1.5, 2.0, 2.5]
+  cells: { sharePrice: number }[][]; // [row=wacc][col=g]
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
-/**
- * Core DCF calculation: unlevered FCF, terminal value, EV, equity, per-share.
- * All dollar amounts are in millions.
- */
 export function runDcf(
   company: CompanyFinancials,
-  assumptions: DcfAssumptions
+  inputs: DcfInputs
 ): DcfResult {
-  const years = assumptions.forecastYears;
-  const growth = assumptions.revenueGrowthPct / 100;
-  const ebitMargin = assumptions.ebitMarginPct / 100;
-  const taxRate = assumptions.taxRatePct / 100;
-  const daPct = assumptions.daPct / 100;
-  const capexPct = assumptions.capexPct / 100;
-  const changeNwcPct = assumptions.changeNwcPct / 100;
-  const wacc = assumptions.waccPct / 100;
-  const g = assumptions.terminalGrowthPct / 100;
+  const {
+    revenueGrowth,
+    ebitMargin,
+    taxRate,
+    daPct,
+    capexPct,
+    changeNwcPct,
+    wacc,
+    terminalGrowth,
+  } = inputs;
 
-  // Safety: prevent invalid TV formula
-  const safeWacc = wacc <= g ? g + 0.005 : wacc;
+  const years: DcfYearResult[] = [];
 
+  // all monetary values are in millions USD
   let revenue = company.revenue;
-  const projections: YearProjection[] = [];
-  let sumDiscountedFcf = 0;
 
-  for (let t = 1; t <= years; t++) {
-    revenue = revenue * (1 + growth);
+  for (let t = 1; t <= 5; t++) {
+    revenue = revenue * (1 + revenueGrowth);
     const ebit = revenue * ebitMargin;
-    const ebiat = ebit * (1 - taxRate);
+    const tax = Math.max(0, ebit * taxRate);
+    const nopat = ebit - tax;
     const da = revenue * daPct;
     const capex = revenue * capexPct;
     const changeNwc = revenue * changeNwcPct;
-    const fcf = ebiat + da - capex - changeNwc;
-    const discountFactor = 1 / Math.pow(1 + safeWacc, t);
-    const discountedFcf = fcf * discountFactor;
-    sumDiscountedFcf += discountedFcf;
+    const fcf = nopat + da - capex - changeNwc;
 
-    projections.push({
-      yearIndex: t,
+    const discountFactor = Math.pow(1 + wacc, t);
+    const discountedFcf = fcf / discountFactor;
+
+    years.push({
+      year: t,
       revenue,
       ebit,
-      ebiat,
+      tax,
+      nopat,
       da,
       capex,
       changeNwc,
       fcf,
-      discountFactor,
       discountedFcf,
     });
   }
 
-  const lastFcf = projections[projections.length - 1]?.fcf ?? 0;
-  const terminalValue = (lastFcf * (1 + g)) / (safeWacc - g);
-  const discountedTerminalValue =
-    terminalValue / Math.pow(1 + safeWacc, years);
+  const presentValueOfForecastFcfs = years.reduce(
+    (sum, y) => sum + y.discountedFcf,
+    0
+  );
 
-  const enterpriseValue = sumDiscountedFcf + discountedTerminalValue;
-  const netDebt = company.debt - company.cash;
+  const lastYear = years[years.length - 1];
+  const terminalFcf = lastYear.fcf * (1 + terminalGrowth);
+  const terminalValue =
+    wacc > terminalGrowth
+      ? terminalFcf / (wacc - terminalGrowth)
+      : Number.POSITIVE_INFINITY;
+
+  const presentValueOfTerminalValue =
+    terminalValue / Math.pow(1 + wacc, 5);
+
+  const enterpriseValue =
+    presentValueOfForecastFcfs + presentValueOfTerminalValue;
+
+  const netDebt = company.debt - company.cash; // already in millions
   const equityValue = enterpriseValue - netDebt;
-  const impliedSharePrice =
-    equityValue / company.sharesOutstanding; // all in millions → $/share
+
+  // equityValue (M) / sharesOutstanding (M) = price in dollars
+  const sharePrice =
+    company.sharesOutstanding > 0
+      ? equityValue / company.sharesOutstanding
+      : 0;
 
   return {
-    projections,
-    terminalValue,
-    discountedTerminalValue,
+    years,
+    presentValueOfForecastFcfs,
+    presentValueOfTerminalValue,
     enterpriseValue,
     netDebt,
     equityValue,
-    impliedSharePrice,
+    sharePrice,
   };
-}
-
-/**
- * Helper to build a small sensitivity grid for share price vs. WACC & g.
- * Returns a 3x3 matrix centered on the base (wacc, g).
- */
-export interface SensitivityCell {
-  waccPct: number;
-  terminalGrowthPct: number;
-  sharePrice: number;
 }
 
 export function buildWaccTerminalSensitivity(
   company: CompanyFinancials,
-  baseAssumptions: DcfAssumptions,
-  waccStep = 1,
-  gStep = 0.5
-): SensitivityCell[][] {
-  const rows: SensitivityCell[][] = [];
-  const baseWacc = baseAssumptions.waccPct;
-  const baseG = baseAssumptions.terminalGrowthPct;
+  baseInputs: DcfInputs
+): WaccTerminalSensitivityResult {
+  const baseWacc = baseInputs.wacc;
+  const baseG = baseInputs.terminalGrowth;
 
-  const waccValues = [baseWacc - waccStep, baseWacc, baseWacc + waccStep];
-  const gValues = [baseG - gStep, baseG, baseG + gStep];
+  // 存成百分数（比如 8.5 而不是 0.085），方便在表里展示
+  const waccRates = [
+    clamp(baseWacc - 0.01, 0.02, 0.25),
+    baseWacc,
+    clamp(baseWacc + 0.01, 0.02, 0.25),
+  ].map((w) => Math.round(w * 1000) / 10);
 
-  for (const w of waccValues) {
-    const row: SensitivityCell[] = [];
-    for (const gg of gValues) {
-      const res = runDcf(company, {
-        ...baseAssumptions,
-        waccPct: w,
-        terminalGrowthPct: gg,
-      });
-      row.push({
-        waccPct: w,
-        terminalGrowthPct: gg,
-        sharePrice: res.impliedSharePrice,
-      });
+  const terminalGrowthRates = [
+    clamp(baseG - 0.005, 0.0, 0.05),
+    baseG,
+    clamp(baseG + 0.005, 0.0, 0.05),
+  ].map((g) => Math.round(g * 1000) / 10);
+
+  const cells: { sharePrice: number }[][] = [];
+
+  for (const waccPct of waccRates) {
+    const row: { sharePrice: number }[] = [];
+    for (const gPct of terminalGrowthRates) {
+      const wacc = waccPct / 100;
+      const g = gPct / 100;
+      const result = runDcf(company, { ...baseInputs, wacc, terminalGrowth: g });
+      row.push({ sharePrice: result.sharePrice });
     }
-    rows.push(row);
+    cells.push(row);
   }
 
-  return rows;
+  return { waccRates, terminalGrowthRates, cells };
 }

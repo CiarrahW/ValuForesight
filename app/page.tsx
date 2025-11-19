@@ -1,21 +1,16 @@
-// app/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  COMPANIES,
-  getCompanyById,
-  type CompanyFinancials,
-  type CompanyId,
-} from "@/data/faang";
-import {
-  runDcf,
-  buildWaccTerminalSensitivity,
-  type DcfAssumptions,
-  type SensitivityCell,
-} from "@/lib/dcf";
-
+import { useMemo, useState } from "react";
+import { COMPANIES, CompanyFinancials, getCompanyById } from "@/data/faang";
+import { runDcf, buildWaccTerminalSensitivity } from "@/lib/dcf";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -26,310 +21,275 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type Assumptions = {
+  growth: number;
+  ebitMargin: number;
+  taxRate: number;
+  daPct: number;
+  capexPct: number;
+  changeNwcPct: number;
+  wacc: number;
+  terminalGrowth: number;
+};
+
 function formatMillions(n: number): string {
   if (!isFinite(n)) return "—";
-  return n.toLocaleString(undefined, {
+  return `${n.toLocaleString("en-US", {
     maximumFractionDigits: 1,
     minimumFractionDigits: 1,
-  });
+  })}M`;
 }
 
-function formatPrice(n: number): string {
+function formatDollars(n: number): string {
   if (!isFinite(n)) return "—";
-  return n.toLocaleString(undefined, {
-    style: "currency",
-    currency: "USD",
+  return `$${n.toLocaleString("en-US", {
     maximumFractionDigits: 2,
-  });
+    minimumFractionDigits: 2,
+  })}`;
 }
 
-function formatPct(n: number): string {
-  if (!isFinite(n)) return "—";
-  return `${n.toFixed(1)}%`;
-}
-
-export default function HomePage() {
-  const [selectedId, setSelectedId] = useState<CompanyId>("AAPL");
-  const [company, setCompany] = useState<CompanyFinancials>(
-    getCompanyById("AAPL")
+export default function Page() {
+  const [selectedId, setSelectedId] = useState<CompanyFinancials["id"]>(
+    COMPANIES[0].id
   );
 
-  const [assumptions, setAssumptions] = useState<DcfAssumptions>({
-    revenueGrowthPct: company.defaultGrowth,
-    ebitMarginPct: company.defaultEbitMargin,
-    taxRatePct: company.defaultTaxRate,
+  const company = useMemo(() => getCompanyById(selectedId), [selectedId]);
+
+  const [assumptions, setAssumptions] = useState<Assumptions>({
+    growth: company.defaultGrowth,
+    ebitMargin: company.defaultEbitMargin,
+    taxRate: company.defaultTaxRate,
     daPct: company.defaultDaPct,
     capexPct: company.defaultCapexPct,
     changeNwcPct: company.defaultChangeNwcPct,
-    waccPct: company.defaultWacc,
-    terminalGrowthPct: company.defaultTerminalGrowth,
-    forecastYears: 5,
+    wacc: company.defaultWacc,
+    terminalGrowth: company.defaultTerminalGrowth,
   });
 
-  useEffect(() => {
-    const c = getCompanyById(selectedId);
-    setCompany(c);
+  function handleCompanyChange(id: CompanyFinancials["id"]) {
+    const next = getCompanyById(id);
+    setSelectedId(id);
     setAssumptions({
-      revenueGrowthPct: c.defaultGrowth,
-      ebitMarginPct: c.defaultEbitMargin,
-      taxRatePct: c.defaultTaxRate,
-      daPct: c.defaultDaPct,
-      capexPct: c.defaultCapexPct,
-      changeNwcPct: c.defaultChangeNwcPct,
-      waccPct: c.defaultWacc,
-      terminalGrowthPct: c.defaultTerminalGrowth,
-      forecastYears: 5,
+      growth: next.defaultGrowth,
+      ebitMargin: next.defaultEbitMargin,
+      taxRate: next.defaultTaxRate,
+      daPct: next.defaultDaPct,
+      capexPct: next.defaultCapexPct,
+      changeNwcPct: next.defaultChangeNwcPct,
+      wacc: next.defaultWacc,
+      terminalGrowth: next.defaultTerminalGrowth,
     });
-  }, [selectedId]);
+  }
+
+  function updateAssumption<K extends keyof Assumptions>(
+    key: K,
+    value: string
+  ) {
+    const num = Number(value.replace(/,/g, ""));
+    if (Number.isNaN(num)) return;
+    setAssumptions((prev) => ({ ...prev, [key]: num }));
+  }
 
   const dcfResult = useMemo(
-    () => runDcf(company, assumptions),
+    () =>
+      runDcf(company, {
+        revenueGrowth: assumptions.growth / 100,
+        ebitMargin: assumptions.ebitMargin / 100,
+        taxRate: assumptions.taxRate / 100,
+        daPct: assumptions.daPct / 100,
+        capexPct: assumptions.capexPct / 100,
+        changeNwcPct: assumptions.changeNwcPct / 100,
+        wacc: assumptions.wacc / 100,
+        terminalGrowth: assumptions.terminalGrowth / 100,
+      }),
     [company, assumptions]
   );
 
   const sensitivity = useMemo(
-    () => buildWaccTerminalSensitivity(company, assumptions),
+    () =>
+      buildWaccTerminalSensitivity(company, {
+        revenueGrowth: assumptions.growth / 100,
+        ebitMargin: assumptions.ebitMargin / 100,
+        taxRate: assumptions.taxRate / 100,
+        daPct: assumptions.daPct / 100,
+        capexPct: assumptions.capexPct / 100,
+        changeNwcPct: assumptions.changeNwcPct / 100,
+        wacc: assumptions.wacc / 100,
+        terminalGrowth: assumptions.terminalGrowth / 100,
+      }),
     [company, assumptions]
   );
 
-  const handleNumberChange =
-    (field: keyof DcfAssumptions) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const raw = e.target.value;
-      const val = parseFloat(raw);
-      setAssumptions((prev) => ({
-        ...prev,
-        [field]: isNaN(val) ? 0 : val,
-      }));
-    };
-
   return (
-    <main className="space-y-5">
-      <header className="flex flex-col gap-2 mb-2">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          ValuForesight – FAANG DCF
-        </h1>
-        <p className="text-sm text-slate-300 max-w-2xl">
-          Interactive Discounted Cash Flow model for FAANG companies. Adjust
-          assumptions and see valuation update in real time.
-        </p>
-      </header>
+    <main className="min-h-screen bg-slate-950 text-slate-50">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-10 pt-8">
+        {/* Top header */}
+        <header className="flex flex-col gap-3 mb-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-semibold tracking-tight">
+              ValuForesight
+            </h1>
+            <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
+              FAANG DCF Engine
+            </span>
+          </div>
+          <p className="text-sm text-slate-300 max-w-3xl">
+            Interactive discounted cash flow model for FAANG companies. Adjust
+            core assumptions (growth, margins, tax rate, WACC, terminal growth)
+            and see the valuation update in real time.
+          </p>
+          <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+            <span className="rounded-full bg-slate-900/80 px-2 py-1 border border-slate-700/70">
+              Next.js · TypeScript · Tailwind
+            </span>
+            <span className="rounded-full bg-slate-900/80 px-2 py-1 border border-slate-700/70">
+              DCF · EV / Equity value · Sensitivity
+            </span>
+          </div>
+        </header>
 
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)]">
-        {/* Left: company + assumptions */}
-        <div className="space-y-4">
-          <Card className="bg-slate-900/70 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-base">Company</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <label className="text-sm font-medium text-slate-200">
-                Select company
-              </label>
-              <select
-                className="w-full rounded-lg border border-slate-600 bg-slate-900/90 px-3 py-2 text-sm text-slate-50 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/70"
-                value={selectedId}
-                onChange={(e) => setSelectedId(e.target.value as CompanyId)}
-              >
-                {COMPANIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.ticker})
-                  </option>
-                ))}
-              </select>
-              <div className="mt-2 text-xs text-slate-400 space-y-1">
-                <p>Base year: {company.baseYear}</p>
-                <p>
-                  Revenue: ${formatMillions(company.revenue)}M · EBIT: $
-                  {formatMillions(company.ebit)}M
-                </p>
-                <p>
-                  Cash: ${formatMillions(company.cash)}M · Debt: $
-                  {formatMillions(company.debt)}M
-                </p>
-                <p>
-                  Shares outstanding:{" "}
-                  {company.sharesOutstanding.toLocaleString()}M
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-slate-900/70 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-base">Assumptions</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3 text-sm">
-              <div className="space-y-1.5">
-                <label className="font-medium text-slate-200">
-                  Revenue growth (%)
-                </label>
-                <Input
-                  className="bg-slate-950 border-slate-700"
-                  type="number"
-                  step="0.5"
-                  value={assumptions.revenueGrowthPct}
-                  onChange={handleNumberChange("revenueGrowthPct")}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-medium text-slate-200">
-                  EBIT margin (%)
-                </label>
-                <Input
-                  className="bg-slate-950 border-slate-700"
-                  type="number"
-                  step="0.5"
-                  value={assumptions.ebitMarginPct}
-                  onChange={handleNumberChange("ebitMarginPct")}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-medium text-slate-200">
-                  Tax rate (%)
-                </label>
-                <Input
-                  className="bg-slate-950 border-slate-700"
-                  type="number"
-                  step="0.5"
-                  value={assumptions.taxRatePct}
-                  onChange={handleNumberChange("taxRatePct")}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-medium text-slate-200">
-                  D&amp;A (% of revenue)
-                </label>
-                <Input
-                  className="bg-slate-950 border-slate-700"
-                  type="number"
-                  step="0.5"
-                  value={assumptions.daPct}
-                  onChange={handleNumberChange("daPct")}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-medium text-slate-200">
-                  CapEx (% of revenue)
-                </label>
-                <Input
-                  className="bg-slate-950 border-slate-700"
-                  type="number"
-                  step="0.5"
-                  value={assumptions.capexPct}
-                  onChange={handleNumberChange("capexPct")}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-medium text-slate-200">
-                  Δ NWC (% of revenue)
-                </label>
-                <Input
-                  className="bg-slate-950 border-slate-700"
-                  type="number"
-                  step="0.5"
-                  value={assumptions.changeNwcPct}
-                  onChange={handleNumberChange("changeNwcPct")}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-medium text-slate-200">
-                  WACC (%)
-                </label>
-                <Input
-                  className="bg-slate-950 border-slate-700"
-                  type="number"
-                  step="0.25"
-                  value={assumptions.waccPct}
-                  onChange={handleNumberChange("waccPct")}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-medium text-slate-200">
-                  Terminal growth (%)
-                </label>
-                <Input
-                  className="bg-slate-950 border-slate-700"
-                  type="number"
-                  step="0.25"
-                  value={assumptions.terminalGrowthPct}
-                  onChange={handleNumberChange("terminalGrowthPct")}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right: forecasts + valuation */}
-        <div className="space-y-4">
-          <Card className="bg-slate-900/70 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-base">
-                5-Year Forecast &amp; FCF (millions USD)
+        {/* Company + 5-year  */}
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
+          <Card className="border-slate-800 bg-slate-900/70 shadow-[0_18px_45px_rgba(15,23,42,0.9)]">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold tracking-[0.12em] text-slate-400">
+                COMPANY
               </CardTitle>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent className="space-y-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-medium text-slate-300">
+                  Select company
+                </label>
+                <Select
+                  value={selectedId}
+                  onValueChange={(v) => handleCompanyChange(v as any)}
+                >
+                  <SelectTrigger className="h-9 border-slate-700 bg-slate-950/70 text-sm">
+                    <SelectValue placeholder="Select company" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-900 border border-slate-700 text-slate-50 shadow-lg">
+                    {COMPANIES.map((c) => (
+                      <SelectItem
+                        key={c.ticker}
+                        value={c.ticker}
+                        className="text-slate-50 data-[highlighted]:bg-slate-800 data-[highlighted]:text-slate-50 focus:bg-slate-800 focus:text-slate-50"
+                      >
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-3 text-xs text-slate-300 space-y-1.5">
+                <div>Base year: {company.baseYear}</div>
+                <div>
+                  Revenue:{" "}
+                  <span className="font-medium">
+                    {formatMillions(company.revenue)}
+                  </span>{" "}
+                  · EBIT:{" "}
+                  <span className="font-medium">
+                    {formatMillions(company.ebit)}
+                  </span>
+                </div>
+                <div>
+                  Cash:{" "}
+                  <span className="font-medium">
+                    {formatMillions(company.cash)}
+                  </span>{" "}
+                  · Debt:{" "}
+                  <span className="font-medium">
+                    {formatMillions(company.debt)}
+                  </span>
+                </div>
+                <div>
+                  Shares outstanding:{" "}
+                  <span className="font-medium">
+                    {company.sharesOutstanding.toLocaleString("en-US", {
+                      maximumFractionDigits: 2,
+                    })}
+                    M
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900/70">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold tracking-[0.12em] text-slate-400">
+                5-YEAR FORECAST &amp; FCF (MILLIONS USD)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky left-0 bg-slate-900/90">
+                  <TableRow className="border-slate-800">
+                    <TableHead className="w-28 text-xs text-slate-400">
                       Item
                     </TableHead>
-                    {dcfResult.projections.map((p) => (
-                      <TableHead key={p.yearIndex}>
-                        Year {p.yearIndex}
+                    {dcfResult.years.map((y) => (
+                      <TableHead
+                        key={y.year}
+                        className="text-right text-xs text-slate-400"
+                      >
+                        YEAR {y.year}
                       </TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell className="sticky left-0 bg-slate-900/90">
+                  <TableRow className="border-slate-900/60">
+                    <TableCell className="text-xs text-slate-300">
                       Revenue
                     </TableCell>
-                    {dcfResult.projections.map((p) => (
-                      <TableCell key={p.yearIndex}>
-                        ${formatMillions(p.revenue)}M
+                    {dcfResult.years.map((y) => (
+                      <TableCell
+                        key={y.year}
+                        className="text-right text-xs font-medium text-slate-100"
+                      >
+                        {formatMillions(y.revenue)}
                       </TableCell>
                     ))}
                   </TableRow>
-
-                  <TableRow>
-                    <TableCell className="sticky left-0 bg-slate-900/90">
+                  <TableRow className="border-slate-900/60">
+                    <TableCell className="text-xs text-slate-300">
                       EBIT
                     </TableCell>
-                    {dcfResult.projections.map((p) => (
-                      <TableCell key={p.yearIndex}>
-                        ${formatMillions(p.ebit)}M
+                    {dcfResult.years.map((y) => (
+                      <TableCell
+                        key={y.year}
+                        className="text-right text-xs text-slate-200"
+                      >
+                        {formatMillions(y.ebit)}
                       </TableCell>
                     ))}
                   </TableRow>
-
-                  <TableRow>
-                    <TableCell className="sticky left-0 bg-slate-900/90">
+                  <TableRow className="border-slate-900/60">
+                    <TableCell className="text-xs text-slate-300">
                       FCF
                     </TableCell>
-                    {dcfResult.projections.map((p) => (
-                      <TableCell key={p.yearIndex}>
-                        ${formatMillions(p.fcf)}M
+                    {dcfResult.years.map((y) => (
+                      <TableCell
+                        key={y.year}
+                        className="text-right text-xs text-slate-200"
+                      >
+                        {formatMillions(y.fcf)}
                       </TableCell>
                     ))}
                   </TableRow>
-
                   <TableRow>
-                    <TableCell className="sticky left-0 bg-slate-900/90">
+                    <TableCell className="text-xs text-slate-300">
                       Discounted FCF
                     </TableCell>
-                    {dcfResult.projections.map((p) => (
-                      <TableCell key={p.yearIndex}>
-                        ${formatMillions(p.discountedFcf)}M
+                    {dcfResult.years.map((y) => (
+                      <TableCell
+                        key={y.year}
+                        className="text-right text-xs text-slate-200"
+                      >
+                        {formatMillions(y.discountedFcf)}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -337,128 +297,246 @@ export default function HomePage() {
               </Table>
             </CardContent>
           </Card>
+        </div>
 
-          <Card className="bg-slate-900/70 border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-base">Valuation Summary</CardTitle>
+        {/* Assumptions + Valuation Summary */}
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1.05fr)_minmax(0,1.4fr)]">
+          <Card className="border-slate-800 bg-slate-900/70">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold tracking-[0.12em] text-slate-400">
+                ASSUMPTIONS
+              </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3 text-sm">
+            <CardContent className="grid grid-cols-2 gap-3 text-xs">
               <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-400">
+                <label className="text-[11px] text-slate-300">
+                  Revenue growth (%)
+                </label>
+                <Input
+                  className="h-8 border-slate-700 bg-slate-950/70 text-xs"
+                  value={assumptions.growth}
+                  onChange={(e) =>
+                    updateAssumption("growth", e.target.value)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-300">
+                  EBIT margin (%)
+                </label>
+                <Input
+                  className="h-8 border-slate-700 bg-slate-950/70 text-xs"
+                  value={assumptions.ebitMargin}
+                  onChange={(e) =>
+                    updateAssumption("ebitMargin", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-300">
+                  Tax rate (%)
+                </label>
+                <Input
+                  className="h-8 border-slate-700 bg-slate-950/70 text-xs"
+                  value={assumptions.taxRate}
+                  onChange={(e) =>
+                    updateAssumption("taxRate", e.target.value)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-300">
+                  D&amp;A (% of revenue)
+                </label>
+                <Input
+                  className="h-8 border-slate-700 bg-slate-950/70 text-xs"
+                  value={assumptions.daPct}
+                  onChange={(e) =>
+                    updateAssumption("daPct", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-300">
+                  CapEx (% of revenue)
+                </label>
+                <Input
+                  className="h-8 border-slate-700 bg-slate-950/70 text-xs"
+                  value={assumptions.capexPct}
+                  onChange={(e) =>
+                    updateAssumption("capexPct", e.target.value)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-300">
+                  Δ NWC (% of revenue)
+                </label>
+                <Input
+                  className="h-8 border-slate-700 bg-slate-950/70 text-xs"
+                  value={assumptions.changeNwcPct}
+                  onChange={(e) =>
+                    updateAssumption("changeNwcPct", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-300">
+                  WACC (%)
+                </label>
+                <Input
+                  className="h-8 border-slate-700 bg-slate-950/70 text-xs"
+                  value={assumptions.wacc}
+                  onChange={(e) =>
+                    updateAssumption("wacc", e.target.value)
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-300">
+                  Terminal growth (%)
+                </label>
+                <Input
+                  className="h-8 border-slate-700 bg-slate-950/70 text-xs"
+                  value={assumptions.terminalGrowth}
+                  onChange={(e) =>
+                    updateAssumption("terminalGrowth", e.target.value)
+                  }
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-800 bg-slate-900/70">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold tracking-[0.12em] text-slate-400">
+                VALUATION SUMMARY
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-y-2 text-xs text-slate-200">
+              <div>
+                <div className="text-[11px] text-slate-400 mb-0.5">
                   PV of forecast FCFs
                 </div>
-                <div className="text-base">
-                  $
-                  {formatMillions(
-                    dcfResult.projections.reduce(
-                      (acc, p) => acc + p.discountedFcf,
-                      0
-                    )
-                  )}
-                  M
+                <div className="font-medium">
+                  {formatMillions(dcfResult.presentValueOfForecastFcfs)}
                 </div>
               </div>
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-400">
+              <div>
+                <div className="text-[11px] text-slate-400 mb-0.5">
                   Terminal value (PV)
                 </div>
-                <div className="text-base">
-                  ${formatMillions(dcfResult.discountedTerminalValue)}M
+                <div className="font-medium">
+                  {formatMillions(dcfResult.presentValueOfTerminalValue)}
                 </div>
               </div>
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-400">
+
+              <div className="pt-1">
+                <div className="text-[11px] text-slate-400 mb-0.5">
                   Enterprise value (EV)
                 </div>
-                <div className="text-base">
-                  ${formatMillions(dcfResult.enterpriseValue)}M
+                <div className="font-medium">
+                  {formatMillions(dcfResult.enterpriseValue)}
                 </div>
               </div>
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-400">
-                  Net debt (Debt − Cash)
+              <div className="pt-1">
+                <div className="text-[11px] text-slate-400 mb-0.5">
+                  Net debt (debt – cash)
                 </div>
-                <div className="text-base">
-                  ${formatMillions(dcfResult.netDebt)}M
+                <div className="font-medium">
+                  {formatMillions(dcfResult.netDebt)}
                 </div>
               </div>
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-400">
+
+              <div className="pt-1">
+                <div className="text-[11px] text-slate-400 mb-0.5">
                   Equity value
                 </div>
-                <div className="text-base">
-                  ${formatMillions(dcfResult.equityValue)}M
+                <div className="font-medium">
+                  {formatMillions(dcfResult.equityValue)}
                 </div>
               </div>
-              <div className="space-y-1">
-                <div className="text-xs uppercase tracking-wide text-slate-400">
+              <div className="pt-1">
+                <div className="text-[11px] text-slate-400 mb-0.5">
                   Implied price / share
                 </div>
-                <div className="text-xl font-semibold text-emerald-300">
-                  {formatPrice(dcfResult.impliedSharePrice)}
+                <div className="text-lg font-semibold text-emerald-400">
+                  {formatDollars(dcfResult.sharePrice)}
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
-      </div>
 
-      {/* Sensitivity */}
-      <Card className="bg-slate-900/70 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-base">
-            Sensitivity: WACC vs Terminal Growth (Implied Price)
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto text-sm">
-          <div className="mb-2 text-xs text-slate-400">
-            Center cell = base case (current WACC and terminal growth
-            assumptions).
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="sticky left-0 bg-slate-900">
-                  WACC ↓ / g →
-                </TableHead>
-                {sensitivity[0].map((cell: SensitivityCell, idx) => (
-                  <TableHead key={idx}>
-                    {formatPct(cell.terminalGrowthPct)}
+        {/* 第三排：敏感性分析 */}
+        <Card className="border-slate-800 bg-slate-900/70">
+          <CardHeader className="pb-1">
+            <CardTitle className="text-sm font-semibold tracking-[0.12em] text-slate-400">
+              SENSITIVITY: WACC VS TERMINAL GROWTH (IMPLIED PRICE)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-[11px] text-slate-400">
+              Center cell = base case (current WACC and terminal growth
+              assumptions).
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-slate-800">
+                  <TableHead className="w-32 text-[11px] text-slate-400">
+                    WACC ↓ / g →
                   </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sensitivity.map((row, rowIdx) => (
-                <TableRow key={rowIdx}>
-                  <TableCell className="sticky left-0 bg-slate-900">
-                    {formatPct(row[0].waccPct)}
-                  </TableCell>
-                  {row.map((cell, colIdx) => {
-                    const isBase =
-                      Math.abs(cell.waccPct - assumptions.waccPct) < 1e-6 &&
-                      Math.abs(
-                        cell.terminalGrowthPct - assumptions.terminalGrowthPct
-                      ) < 1e-6;
-                    return (
-                      <TableCell
-                        key={colIdx}
-                        className={
-                          isBase
-                            ? "font-semibold text-emerald-300"
-                            : "text-slate-100"
-                        }
-                      >
-                        {formatPrice(cell.sharePrice)}
-                      </TableCell>
-                    );
-                  })}
+                  {sensitivity.terminalGrowthRates.map((g) => (
+                    <TableHead
+                      key={g}
+                      className="text-right text-[11px] text-slate-400"
+                    >
+                      {g.toFixed(1)}%
+                    </TableHead>
+                  ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {sensitivity.waccRates.map((wacc, rowIdx) => (
+                  <TableRow key={wacc} className="border-slate-900/60">
+                    <TableCell className="text-[11px] text-slate-400">
+                      {wacc.toFixed(1)}%
+                    </TableCell>
+                    {sensitivity.cells[rowIdx].map((cell, colIdx) => {
+                      const isBase =
+                        Math.abs(wacc - assumptions.wacc) < 1e-6 &&
+                        Math.abs(
+                          sensitivity.terminalGrowthRates[colIdx] -
+                            assumptions.terminalGrowth
+                        ) < 1e-6;
+                      return (
+                        <TableCell
+                          key={colIdx}
+                          className={`text-right text-xs ${
+                            isBase
+                              ? "font-semibold text-emerald-400"
+                              : "text-slate-200"
+                          }`}
+                        >
+                          {formatDollars(cell.sharePrice)}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+        <p className="mt-4 text-[11px] text-slate-500 text-right">
+          Financial data sourced from Alpha Vantage & Structify-style analytics pipeline via a custom ETL script;
+          values represent the latest available annual reports and are expressed
+          in millions of USD.
+        </p>
+      </div>
     </main>
   );
 }
