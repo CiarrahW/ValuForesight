@@ -120,14 +120,6 @@ export default function HomePage() {
           and watch the 5-year FCF forecast, valuation and sensitivity table
           update in real time.
         </p>
-        <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
-          <span className="rounded-full bg-slate-900/80 px-2 py-1 border border-slate-700/70">
-            Built with Next.js · TypeScript · Tailwind
-          </span>
-          <span className="rounded-full bg-slate-900/80 px-2 py-1 border border-slate-700/70">
-            Front-office FinTech / Valuation tooling
-          </span>
-        </div>
       </header>
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)]">
