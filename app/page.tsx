@@ -105,14 +105,29 @@ export default function HomePage() {
 
   return (
     <main className="space-y-5">
-      <header className="flex flex-col gap-2 mb-2">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          ValuForesight – FAANG DCF
-        </h1>
-        <p className="text-sm text-slate-300 max-w-2xl">
-          Interactive Discounted Cash Flow model for FAANG companies. Adjust
-          assumptions and see valuation update in real time.
+      <header className="flex flex-col gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight">
+            ValuForesight
+          </h1>
+          <span className="rounded-full border border-emerald-400/60 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
+            FAANG DCF Engine
+          </span>
+        </div>
+        <p className="text-sm text-slate-300 max-w-3xl">
+          Interactive Discounted Cash Flow model for FAANG companies. Adjust core 
+          assumptions like growth, margins, tax rate, WACC and terminal growth,
+          and watch the 5-year FCF forecast, valuation and sensitivity table
+          update in real time.
         </p>
+        <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+          <span className="rounded-full bg-slate-900/80 px-2 py-1 border border-slate-700/70">
+            Built with Next.js · TypeScript · Tailwind
+          </span>
+          <span className="rounded-full bg-slate-900/80 px-2 py-1 border border-slate-700/70">
+            Front-office FinTech / Valuation tooling
+          </span>
+        </div>
       </header>
 
       <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)]">
