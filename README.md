@@ -146,8 +146,8 @@ All logic implemented in `lib/dcf.ts`.
 
 ### 1. Clone the repository
 
-```bash
-git clone https:**//github.com/CiarrahW/ValuForesight.git
+```
+git clone https://github.com/CiarrahW/ValuForesight.git
 cd ValuForesight
 ```
 
