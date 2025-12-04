@@ -15,7 +15,6 @@ Users can modify key financial assumptions and instantly see the impact on free 
 - Uses the pre-generated local dataset `data/faang.ts`
 - **Does not** require any API keys
 - **Does not** make live financial API calls (fast & secure)
-- Ideal for recruiters, interviewers, and portfolio links
 - The link always reflects the latest version of the project
 
 ### Local Development Version
